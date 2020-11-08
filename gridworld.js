@@ -6,7 +6,7 @@ const S_PLUS = [...S, TERMINAL_STATE]
 const A = range(4) // {up, down, right, left}
 const V = new Map(S_PLUS.map(s => [s, 0]))
 const GAMMA = 1
-const THETA = 0.0001
+const THETA = 0.03
 
 const moveTo = (x, y, a) => {
   switch (a) {
@@ -35,17 +35,17 @@ const probabilityNextStateReward = (s, a) => {
   return { p: 1, s2, r: -1 }
 }
 
-const dumpV = (V, k, fractionDigits = 2) => {
-  const toFixed = v => Number(v.toFixed(fractionDigits))
+const dumpV = (V, k, precision = 2) => {
+  const significantDigits = v => Number(v.toPrecision(precision))
   const copyOfV = new Map(V)
-  const entries = Array.from(copyOfV.entries())
-  entries.forEach(([s, v]) => copyOfV.set(s, toFixed(v)))
+  copyOfV.forEach((v, s) => copyOfV.set(s, significantDigits(v)))
   console.log(`k: ${k}; V:`, copyOfV)
 }
 
 const evaluatePolicy = () => {
   let k = 0
   dumpV(V, k)
+  const copyOfV = new Map(V)
   for (; ;) {
     let delta = 0
     S.forEach(s => {
@@ -55,12 +55,13 @@ const evaluatePolicy = () => {
         // probability of taking action a in state s under equiprobable random policy
         const pi_a_s = 1 / A.length
         const { p, s2, r } = probabilityNextStateReward(s, a)
-        const totalDiscountedReward = p * (r + GAMMA * V.get(s2))
-        vNew += pi_a_s * totalDiscountedReward
+        const discountedReward = r + GAMMA * V.get(s2)
+        vNew += pi_a_s * p * discountedReward
       })
-      V.set(s, vNew)
+      copyOfV.set(s, vNew)
       delta = Math.max(delta, Math.abs(vOld - vNew))
     })
+    copyOfV.forEach((v, s) => V.set(s, v))
     k += 1
     dumpV(V, k)
     if (delta < THETA) break
