@@ -55,8 +55,8 @@ const evaluatePolicy = () => {
         // probability of taking action a in state s under equiprobable random policy
         const pi_a_s = 1 / A.length
         const { p, s2, r } = probabilityNextStateReward(s, a)
-        const discountedReward = r + GAMMA * V.get(s2)
-        vNew += pi_a_s * p * discountedReward
+        const discountedReturn = r + GAMMA * V.get(s2)
+        vNew += pi_a_s * p * discountedReturn
       })
       copyOfV.set(s, vNew)
       delta = Math.max(delta, Math.abs(vOld - vNew))
