@@ -1,10 +1,10 @@
 const range = n => Array.from(Array(n).keys())
+const noop = () => { }
 
 const S = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] // {1,2,...,14}
 const TERMINAL_STATE = 99
 const S_PLUS = [...S, TERMINAL_STATE]
 const A = range(4) // {up, down, right, left}
-const V = new Map(S_PLUS.map(s => [s, 0]))
 const GAMMA = 1
 const THETA = 0.03
 
@@ -22,54 +22,71 @@ const gridCoordsAreTerminal = (x, y) => (x === 0 && y === 0) || (x === 3 && y ==
 const stateToGridCoords = s => [s % 4, Math.floor(s / 4)]
 const gridCoordsToState = (x, y) => y * 4 + x
 
-const probabilityNextStateReward = (s, a) => {
+const nextStatesAndRewardsProbabilities = (s, a) => {
   if (s === TERMINAL_STATE) {
-    return { p: 1, s2: s, r: 0 }
+    return Array.of({ p: 1, s2: s, r: 0 })
   }
   const [x1, y1] = stateToGridCoords(s)
   const [x2, y2] = moveTo(x1, y1, a)
   if (gridCoordsAreOffGrid(x2, y2)) {
-    return { p: 1, s2: s, r: -1 }
+    return Array.of({ p: 1, s2: s, r: -1 })
   }
   const s2 = gridCoordsAreTerminal(x2, y2) ? TERMINAL_STATE : gridCoordsToState(x2, y2)
-  return { p: 1, s2, r: -1 }
+  return Array.of({ p: 1, s2, r: -1 })
 }
 
-const dumpV = (V, k, precision = 2) => {
+const dumpStateValueFunction = (svf, label, precision = 2) => {
   const significantDigits = v => Number(v.toPrecision(precision))
-  const copyOfV = new Map(V)
-  copyOfV.forEach((v, s) => copyOfV.set(s, significantDigits(v)))
-  console.log(`k: ${k}; V:`, copyOfV)
+  const svfCopy = new Map(svf)
+  svfCopy.forEach((v, s) => svfCopy.set(s, significantDigits(v)))
+  label ? console.log(label, svfCopy) : console.log(svfCopy)
 }
 
-const evaluatePolicy = () => {
+const evaluatePolicy = (pi, svf, cb = noop) => {
   let k = 0
-  dumpV(V, k)
-  const copyOfV = new Map(V)
+  let svfPrevious = svf
   for (; ;) {
+    const svfNext = new Map(svfPrevious)
     let delta = 0
     S.forEach(s => {
-      const vOld = V.get(s)
+      const vOld = svfPrevious.get(s)
       let vNew = 0
       A.forEach(a => {
-        // probability of taking action a in state s under equiprobable random policy
-        const pi_a_s = 1 / A.length
-        const { p, s2, r } = probabilityNextStateReward(s, a)
-        const discountedReturn = r + GAMMA * V.get(s2)
-        vNew += pi_a_s * p * discountedReturn
+        const actionProb = pi(s, a)
+        for (const { p, s2, r } of nextStatesAndRewardsProbabilities(s, a)) {
+          const discountedReturn = r + GAMMA * svfPrevious.get(s2)
+          vNew += actionProb * p * discountedReturn
+        }
       })
-      copyOfV.set(s, vNew)
+      svfNext.set(s, vNew)
       delta = Math.max(delta, Math.abs(vOld - vNew))
     })
-    copyOfV.forEach((v, s) => V.set(s, v))
     k += 1
-    dumpV(V, k)
-    if (delta < THETA) break
+    cb(svfNext, k)
+    if (delta < THETA) return svfNext
+    svfPrevious = svfNext
   }
+}
+
+const createInitialStateValueFunction = () =>
+  new Map(S_PLUS.map(s => [s, 0]))
+
+const createInitialPolicy = () => {
+  // Return the probability of taking action 'a' in state 's'
+  return (_s, _a) => 1 / A.length
 }
 
 const main = () => {
-  evaluatePolicy()
+  const verbose = process.argv.length === 3 && process.argv[2] === '--verbose'
+  const svf = createInitialStateValueFunction()
+  const pi = createInitialPolicy()
+  if (verbose) {
+    const cb = (svf, k) => dumpStateValueFunction(svf, `k: ${k}; V:`)
+    evaluatePolicy(pi, svf, cb)
+  } else {
+    const svf2 = evaluatePolicy(pi, svf)
+    dumpStateValueFunction(svf2)
+  }
 }
 
 main()

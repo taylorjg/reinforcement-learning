@@ -34,12 +34,11 @@ const S = NUMBERS_OF_CARS.flatMap(noc1 =>
   NUMBERS_OF_CARS.map(noc2 =>
     makeState(noc1, noc2)))
 const A = range(11).map(a => a - 5) // [-5, -4, ..., 4, 5]
-const V = new Map(S.map(s => [s, 0]))
 
 const GAMMA = 0.9
 const THETA = 1
 
-const probabilitiesNextStatesRewards = (s, a) => {
+const nextStatesAndRewardsProbabilities = (s, a) => {
   const carsMoved = Math.abs(a)
   const [noc1, noc2] = parseState(s)
   const results = []
@@ -63,37 +62,32 @@ const probabilitiesNextStatesRewards = (s, a) => {
   return results
 }
 
-const evaluatePolicy = pi => {
+const evaluatePolicy = (pi, svf, verbose) => {
   let k = 0
-  console.log(`[evaluatePolicy] k: ${k}`)
-  const copyOfV = new Map(V)
+  let svfPrevious = svf
   for (; ;) {
+    const svfNext = new Map()
     let delta = 0
     S.forEach(s => {
-      const vOld = V.get(s)
+      const vOld = svfPrevious.get(s)
       let vNew = 0
       const a = pi(s)
-      const xs = probabilitiesNextStatesRewards(s, a)
+      const xs = nextStatesAndRewardsProbabilities(s, a)
       for (const { p, s2, r } of xs) {
-        const discountedReturn = r + GAMMA * V.get(s2)
+        const discountedReturn = r + GAMMA * svfPrevious.get(s2)
         vNew += p * discountedReturn
       }
-      copyOfV.set(s, vNew)
+      svfNext.set(s, vNew)
       delta = Math.max(delta, Math.abs(vOld - vNew))
     })
-    copyOfV.forEach((v, s) => V.set(s, v))
     k += 1
-    console.log(`[evaluatePolicy] k: ${k}; delta: ${delta}`)
-    if (delta < THETA) break
+    verbose && console.log(`[evaluatePolicy] k: ${k}; delta: ${delta}`)
+    if (delta < THETA) return svfNext
+    svfPrevious = svfNext
   }
 }
 
-const createInitialPolicy = () => {
-  const m = new Map(S.map(s => [s, 0]))
-  return s => m.get(s)
-}
-
-const improvePolicy = pi => {
+const improvePolicy = (pi, svf) => {
   const m = new Map()
   let stable = true
   S.forEach(s => {
@@ -102,9 +96,8 @@ const improvePolicy = pi => {
     let vMax = Number.NEGATIVE_INFINITY
     A.forEach(a => {
       let v = 0
-      const xs = probabilitiesNextStatesRewards(s, a)
-      for (const { p, s2, r } of xs) {
-        const discountedReturn = r + GAMMA * V.get(s2)
+      for (const { p, s2, r } of nextStatesAndRewardsProbabilities(s, a)) {
+        const discountedReturn = r + GAMMA * svf.get(s2)
         v += p * discountedReturn
       }
       if (v > vMax) {
@@ -139,11 +132,20 @@ const dumpPolicy = pi => {
   console.log()
 }
 
+const createInitialPolicy = () => {
+  return _s => 0
+}
+
+const createInitialStateValueFunction = () =>
+  new Map(S.map(s => [s, 0]))
+
 const main = () => {
+  const verbose = process.argv.length === 3 && process.argv[2] === '--verbose'
   let pi = createInitialPolicy()
+  let svf = createInitialStateValueFunction()
   for (; ;) {
-    evaluatePolicy(pi) // => updates state value function, V
-    const [pi2, stable] = improvePolicy(pi)
+    svf = evaluatePolicy(pi, svf, verbose)
+    const [pi2, stable] = improvePolicy(pi, svf)
     if (stable) break
     pi = pi2
     dumpPolicy(pi)
